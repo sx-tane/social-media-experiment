@@ -61,17 +61,16 @@ def post_to_tiktok(access_token, image_path, caption, hashtags):
     payload = {
         "post_info": {
             "title": (caption + " " + hashtags)[:2200],
-            "description": caption,
-            "disable_comment": False,
-            "privacy_level": "PUBLIC_TO_EVERYONE",
-            "auto_add_music": True
+            "privacy_level": "PUBLIC_TO_EVERYONE"
         },
         "source_info": {
-            "source": "FILE_UPLOAD" # Specify we are uploading a file
+            "source": "FILE_UPLOAD"
         },
         "post_mode": "DIRECT_POST",
         "media_type": "PHOTO"
     }
+
+    print(f"Sending initialization payload: {json.dumps(payload, indent=2)}")
 
     try:
         init_resp = requests.post(init_url, headers=headers, json=payload)
@@ -103,7 +102,7 @@ def post_to_tiktok(access_token, image_path, caption, hashtags):
     except requests.exceptions.RequestException as e:
         print(f"Error posting to TikTok: {e}")
         if e.response:
-            print(f"TikTok API response: {e.response.text}")
+            print(f"TikTok API raw error response: {e.response.text}")
         return False, None
 
 def send_slack_message(status, publish_id, caption, image_url):

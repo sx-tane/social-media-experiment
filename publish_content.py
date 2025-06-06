@@ -49,33 +49,39 @@ def get_access_token():
 
 def post_to_tiktok(access_token, image_path, caption, hashtags):
     """
-    Posts the generated image and caption to TikTok using direct file upload.
+    Posts the generated image to TikTok using the PULL_FROM_URL method.
     """
-    print("Initiating post to TikTok with file upload...")
-    # 1. Initialize the post to get an upload URL
-    init_url = "https://open.tiktokapis.com/v2/post/publish/content/init/"
+    print("Initiating post to TikTok using PULL_FROM_URL...")
+
+    # Construct the public URL to the image in the GitHub repository
+    github_repo = os.getenv("GITHUB_REPOSITORY")
+    github_ref = os.getenv("GITHUB_REF_NAME")
+    if not github_repo or not github_ref:
+        print("Error: GITHUB_REPOSITORY or GITHUB_REF_NAME env vars not set.")
+        return False, None
+    image_url = f"https://raw.githubusercontent.com/{github_repo}/{github_ref}/{image_path}"
+    print(f"Using public image URL: {image_url}")
+
+    endpoint = "https://open.tiktokapis.com/v2/post/publish/content/init/"
     headers = {
         "Authorization": f"Bearer {access_token}",
         "Content-Type": "application/json; charset=UTF-8"
     }
     
-    # Get the size of the image to include in the payload
-    try:
-        image_size = os.path.getsize(image_path)
-    except OSError as e:
-        print(f"Could not get size of image file: {e}")
-        return False, None
+    full_description = f"{caption}\n\n{hashtags}"
 
     payload = {
         "post_info": {
-            "title": (caption + " " + hashtags)[:2200],
-            "privacy_level": "PUBLIC_TO_EVERYONE"
+            "title": caption[:2200],
+            "description": full_description,
+            "disable_comment": False,
+            "privacy_level": "PUBLIC_TO_EVERYONE",
+            "auto_add_music": True
         },
         "source_info": {
-            "source": "FILE_UPLOAD",
-            "photo_size": image_size,
-            "chunk_size": image_size,
-            "total_chunk_count": 1
+            "source": "PULL_FROM_URL",
+            "photo_cover_index": 1,
+            "photo_images": [image_url]
         },
         "post_mode": "DIRECT_POST",
         "media_type": "PHOTO"
@@ -84,32 +90,20 @@ def post_to_tiktok(access_token, image_path, caption, hashtags):
     print(f"Sending initialization payload: {json.dumps(payload, indent=2)}")
 
     try:
-        init_resp = requests.post(init_url, headers=headers, json=payload)
-        init_resp.raise_for_status()
-        init_result = init_resp.json()
+        resp = requests.post(endpoint, headers=headers, json=payload)
+        resp.raise_for_status()
+        result = resp.json()
 
-        if init_result.get("error", {}).get("code", "ok").lower() != "ok":
-            err_msg = init_result.get("error", {}).get("message", "Unknown TikTok API error during init")
+        if result.get("error", {}).get("code", "ok").lower() == "ok":
+            publish_id = result.get("data", {}).get("publish_id")
+            print(f"TikTok post initiated successfully. Publish ID: {publish_id}")
+            return True, publish_id
+        else:
+            err_msg = result.get("error", {}).get("message", "Unknown TikTok API error")
             print(f"TikTok API returned an error: {err_msg}")
+            print(f"Full error object: {result.get('error')}")
             return False, None
-        
-        upload_url = init_result.get("data", {}).get("upload_url")
-        publish_id = init_result.get("data", {}).get("publish_id")
-        print(f"Successfully initiated post. Publish ID: {publish_id}")
-        
-        # 2. Upload the image file to the provided URL
-        print(f"Uploading image file to: {upload_url}")
-        with open(image_path, 'rb') as f:
-            image_data = f.read()
-        
-        upload_headers = {'Content-Type': 'image/png'}
-        upload_resp = requests.put(upload_url, headers=upload_headers, data=image_data)
-        upload_resp.raise_for_status()
-        
-        print("Image file uploaded successfully.")
-        # NOTE: With direct post, the upload is sufficient. No need to check status.
-        return True, publish_id
-
+            
     except requests.exceptions.RequestException as e:
         print(f"Error posting to TikTok: {e}")
         if e.response:

@@ -50,7 +50,7 @@ jobs:
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          git add pending_post.json pending_image.png
+          git add pending_post.json pending_image.jpg
           if ! git diff --staged --quiet; then
             git commit -m "feat: Add or update pending post"
             git push
@@ -105,6 +105,6 @@ jobs:
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          git rm pending_post.json pending_image.png
+          git rm pending_post.json pending_image.jpg
           git commit -m "feat: Clean up published post files"
           git push 

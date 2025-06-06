@@ -4,8 +4,6 @@ import openai
 import json
 import base64
 from dotenv import load_dotenv
-from PIL import Image
-import io
 
 # Load environment variables from .env file
 load_dotenv()
@@ -63,10 +61,10 @@ def generate_prompt_and_caption(client):
         return None, None, None
 
 # *** 3. Use gpt-image-1 to generate an image and save it to a file ***
-def generate_image_file(client, description, output_path="pending_image.jpg"):
+def generate_image_file(client, description, output_path="pending_image.png"):
     """
-    Calls gpt-image-1, decodes the base64 response, converts to JPEG, 
-    and saves it to a file. Returns the path to the saved image.
+    Calls gpt-image-1, decodes the base64 response, and saves it to a file.
+    Returns the path to the saved image.
     """
     print("Generating image with gpt-image-1...")
     style_description = (
@@ -82,20 +80,14 @@ def generate_image_file(client, description, output_path="pending_image.jpg"):
             prompt=style_description,
             n=1,
             size="1024x1024",
-            response_format="b64_json" # Ask for base64 data
+            quality="medium",
         )
         
         b64_data = response.data[0].b64_json
         image_bytes = base64.b64decode(b64_data)
         
-        # Convert from PNG bytes to JPEG bytes
-        img = Image.open(io.BytesIO(image_bytes))
-        # Ensure image is in RGB mode for JPEG saving
-        if img.mode != 'RGB':
-            img = img.convert('RGB')
-
         with open(output_path, "wb") as f:
-            img.save(f, "JPEG", quality=95)
+            f.write(image_bytes)
             
         print(f"Image saved successfully to {output_path}")
         return output_path

@@ -1,16 +1,3 @@
-Great! I'll research and build a complete, step-by-step setup for you that:
-
-* Automatically generates a daily illustration with a layout and style like the image you uploaded (monotone blue, cozy bedtime mood).
-* Uses GPT to create a new scene description and motivational caption each day.
-* Generates the art image using an AI model.
-* Posts the result directly to TikTok.
-* Sends updates to your Slack so you can check it daily.
-
-I'll find the best free or low-cost tools (under \$10/month total) and give you literal copy-paste instructions, even if you're a total beginner.
-
-I'll update you once the full guide is ready!
-
-
 # **Automating Daily Dreamy TikTok Posts: A Beginner's Step-by-Step Guide**
 
 Do you want to automatically create a calming bedtime illustration every day and share it on TikTok with a motivational caption? This tutorial will walk you through setting up a simple system – using AI for image and text, and automating posting to TikTok – all for little to no cost. We'll also set up Slack notifications so you get a daily preview and status update. No coding experience is required; we'll provide all code and detailed instructions. Just follow along step by step!

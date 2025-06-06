@@ -77,10 +77,10 @@ def query_creator_info(access_token):
 def post_to_tiktok(access_token, image_url, caption, hashtags, privacy_level):
     """
     Posts the generated image to TikTok using the PULL_FROM_URL method.
-    The image is now referenced by a public URL from Vercel Blob.
+    The image is now referenced by a public URL from Cloudflare R2.
     """
-    print("Initiating post to TikTok using PULL_FROM_URL...")
-    print(f"Using public image URL from Vercel: {image_url}")
+    print("Initiating post to TikTok via PULL_FROM_URL...")
+    print(f"--> Using public image URL: {image_url}")
 
     endpoint = "https://open.tiktokapis.com/v2/post/publish/content/init/"
     headers = {
@@ -105,11 +105,12 @@ def post_to_tiktok(access_token, image_url, caption, hashtags, privacy_level):
             "photo_cover_index": 0,
             "photo_images": [image_url]
         },
-        "post_mode": "MEDIA_UPLOAD",
+        "post_mode": "DIRECT_POST",
         "media_type": "PHOTO"
     }
 
-    print(f"Sending initialization payload: {json.dumps(payload, indent=2)}")
+    print("Sending TikTok API payload:")
+    print(json.dumps(payload, indent=2))
 
     try:
         resp = requests.post(endpoint, headers=headers, json=payload)
@@ -118,7 +119,7 @@ def post_to_tiktok(access_token, image_url, caption, hashtags, privacy_level):
 
         if result.get("error", {}).get("code", "ok").lower() == "ok":
             publish_id = result.get("data", {}).get("publish_id")
-            print(f"TikTok post initiated successfully. Publish ID: {publish_id}")
+            print(f"✅ TikTok post initiated successfully. Publish ID: {publish_id}")
             return True, publish_id
         else:
             err_msg = result.get("error", {}).get("message", "Unknown TikTok API error")
@@ -192,7 +193,7 @@ if __name__ == "__main__":
     allowed_privacy_levels = creator_info.get("privacy_level_options", [])
     print(f"Available privacy options: {allowed_privacy_levels}")
     
-    privacy_level_to_use = "PUBLIC_TO_EVERYONE"
+    privacy_level_to_use = "SELF_ONLY"
     if privacy_level_to_use not in allowed_privacy_levels:
         print(f"Error: '{privacy_level_to_use}' is not in the allowed list from TikTok: {allowed_privacy_levels}")
         send_slack_message(False, None, "Publishing failed: Privacy level mismatch.", "https://via.placeholder.com/512.png?text=Privacy+Error")

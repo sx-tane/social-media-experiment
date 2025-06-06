@@ -3,8 +3,9 @@ import requests
 import openai
 import json
 import base64
+import boto3
+from botocore.exceptions import ClientError
 from dotenv import load_dotenv
-import vercel_blob
 
 # Load environment variables from .env file
 load_dotenv()
@@ -12,11 +13,13 @@ load_dotenv()
 # *** 1. Configure API keys and tokens ***
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL")
-# The Vercel Blob token is now required for the generation script
-VERCEL_BLOB_TOKEN = os.getenv("TOURII_READ_WRITE_TOKEN")
-# GitHub context for generating image preview URLs in Slack
-GITHUB_REPOSITORY = os.getenv("GITHUB_REPOSITORY") # E.g., 'user/repo'
-GITHUB_REF_NAME = os.getenv("GITHUB_REF_NAME") # E.g., 'main'
+
+# Cloudflare R2 credentials from environment
+R2_ACCOUNT_ID = os.getenv("R2_ACCOUNT_ID")
+R2_ACCESS_KEY_ID = os.getenv("R2_ACCESS_KEY_ID")
+R2_SECRET_ACCESS_KEY = os.getenv("R2_SECRET_ACCESS_KEY")
+R2_BUCKET_NAME = os.getenv("R2_BUCKET_NAME")
+R2_PUBLIC_DOMAIN = os.getenv("R2_PUBLIC_DOMAIN")
 
 # *** 2. Generate daily prompt and caption using GPT-4o ***
 def generate_prompt_and_caption(client):
@@ -72,9 +75,9 @@ def generate_image_file(client, description, output_path="pending_image.png"):
     print("Generating image with gpt-image-1...")
     style_description = (
         f"A whimsical digital illustration of: {description}. "
-        "The style is minimalist, clean, flat vector art. "
-        "Use a calming, monotone color palette, primarily in shades of deep blue and soft, glowing whites, inspired by the artist lulu._.sketch. "
-        "The mood is cozy, serene, and dreamlike, perfect for a bedtime story. Centered composition."
+        "Style: minimalist, clean, flat vector art. "
+        "Palette: calming, monotone, shades of deep blue and soft, glowing whites. "
+        "Mood: cozy, serene, dreamlike, perfect for a bedtime story. Centered composition."
     )
     
     try:
@@ -95,43 +98,60 @@ def generate_image_file(client, description, output_path="pending_image.png"):
         print(f"Image saved successfully to {output_path}")
         return output_path
     except Exception as e:
-        print(f"Error calling DALL-E 3 API for image generation. Details: {repr(e)}")
+        print(f"Error calling gpt-image-1 API for image generation. Details: {repr(e)}")
         return None
 
-# *** 4. Upload image to Vercel Blob ***
-def upload_image_to_vercel(image_path):
+# *** 4. Upload image to Cloudflare R2 ***
+def upload_image_to_r2(image_path):
     """
-    Uploads the specified image file to Vercel Blob storage.
+    Uploads the specified image file to a Cloudflare R2 bucket.
     Returns the public URL of the uploaded image.
     """
-    # The vercel-blob library expects the token in the BLOB_READ_WRITE_TOKEN env var.
-    # We get it from the TOURII_READ_WRITE_TOKEN secret and set it temporarily.
-    vercel_token = os.getenv("TOURII_READ_WRITE_TOKEN")
-    if not vercel_token:
-        print("Error: TOURII_READ_WRITE_TOKEN is not set. Cannot upload to Vercel.")
+    print("Verifying Cloudflare R2 credentials...")
+    if not all([R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME, R2_PUBLIC_DOMAIN]):
+        print("Error: Missing one or more Cloudflare R2 environment variables. Please check repository secrets.")
         return None
-    
-    original_blob_token = os.environ.get('BLOB_READ_WRITE_TOKEN')
-    os.environ['BLOB_READ_WRITE_TOKEN'] = vercel_token
-        
-    print(f"Uploading {image_path} to Vercel Blob...")
+
     try:
-        with open(image_path, "rb") as f:
-            # Call with positional arguments: pathname and body.
-            # The token is read from the environment by the library.
-            blob_result = vercel_blob.put(os.path.basename(image_path), f.read())
+        # Construct the R2 endpoint URL
+        r2_endpoint_url = f"https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
         
-        print(f"Successfully uploaded to Vercel. URL: {blob_result['url']}")
-        return blob_result['url']
-    except Exception as e:
-        print(f"Error uploading to Vercel Blob: {repr(e)}")
+        print("Connecting to Cloudflare R2...")
+        # Create a boto3 client for R2
+        s3_client = boto3.client(
+            service_name='s3',
+            endpoint_url=r2_endpoint_url,
+            aws_access_key_id=R2_ACCESS_KEY_ID,
+            aws_secret_access_key=R2_SECRET_ACCESS_KEY,
+            region_name='auto', # Required by boto3, 'auto' is fine for R2
+        )
+
+        image_filename = os.path.basename(image_path)
+        print(f"Uploading '{image_filename}' to R2 bucket '{R2_BUCKET_NAME}'...")
+
+        # Upload the file
+        with open(image_path, "rb") as f:
+            s3_client.upload_fileobj(
+                f,
+                R2_BUCKET_NAME,
+                image_filename,
+                ExtraArgs={'ContentType': 'image/png'}
+            )
+        
+        # Construct the final public URL
+        public_url = f"https://{R2_PUBLIC_DOMAIN}/{image_filename}"
+        print(f"✅ Successfully uploaded to R2. Public URL: {public_url}")
+        return public_url
+
+    except ClientError as e:
+        # Catch specific boto3 client errors for better diagnostics
+        error_code = e.response.get("Error", {}).get("Code")
+        print(f"A client-side error occurred: {error_code}. Check your credentials and bucket settings.")
+        print(f"Full error: {repr(e)}")
         return None
-    finally:
-        # Restore the original environment state to avoid side-effects
-        if original_blob_token:
-            os.environ['BLOB_READ_WRITE_TOKEN'] = original_blob_token
-        elif 'BLOB_READ_WRITE_TOKEN' in os.environ:
-            del os.environ['BLOB_READ_WRITE_TOKEN']
+    except Exception as e:
+        print(f"An unexpected error occurred during R2 upload: {repr(e)}")
+        return None
 
 # *** 5. Save content to a file for the publishing workflow ***
 def save_content_for_approval(image_url, caption, hashtags):
@@ -152,7 +172,7 @@ def save_content_for_approval(image_url, caption, hashtags):
 # *** 6. Send a Slack notification asking for approval ***
 def send_approval_request_to_slack(image_url, caption, hashtags):
     """
-    Sends a notification to Slack with a direct link to the Vercel image.
+    Sends a notification to Slack with a direct link to the published image.
     """
     print("Sending Slack notification for approval...")
 
@@ -217,13 +237,13 @@ def main():
         print("Image generation failed. Exiting.")
         exit(1)
         
-    # New step: Upload the generated image to Vercel Blob
-    image_url = upload_image_to_vercel(image_path)
+    # New step: Upload the generated image to Cloudflare R2
+    image_url = upload_image_to_r2(image_path)
     if not image_url:
-        print("Vercel Blob upload failed. Exiting.")
+        print("Cloudflare R2 upload failed. Exiting.")
         exit(1)
         
-    # The image file is no longer needed after upload, so we can remove it
+    # The image file is no longer needed after upload, so we remove it
     try:
         os.remove(image_path)
         print(f"Removed local image file: {image_path}")

@@ -15,12 +15,8 @@ SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL")
 GITHUB_REPOSITORY = os.getenv("GITHUB_REPOSITORY") # E.g., 'user/repo'
 GITHUB_REF_NAME = os.getenv("GITHUB_REF_NAME") # E.g., 'main'
 
-
-# Configure the OpenAI client
-client = openai.OpenAI(api_key=OPENAI_API_KEY)
-
 # *** 2. Generate daily prompt and caption using GPT-4o ***
-def generate_prompt_and_caption():
+def generate_prompt_and_caption(client):
     """
     Calls GPT-4o to get a new scene, caption, and hashtags.
     """
@@ -65,7 +61,7 @@ def generate_prompt_and_caption():
         return None, None, None
 
 # *** 3. Use gpt-image-1 to generate an image and save it to a file ***
-def generate_image_file(description, output_path="pending_image.png"):
+def generate_image_file(client, description, output_path="pending_image.png"):
     """
     Calls gpt-image-1, decodes the base64 response, and saves it to a file.
     Returns the path to the saved image.
@@ -174,12 +170,14 @@ def main():
     # Default behavior: generate files
     print("Starting content generation script...")
     
-    description, caption, hashtags = generate_prompt_and_caption()
+    client = openai.OpenAI(api_key=OPENAI_API_KEY)
+    
+    description, caption, hashtags = generate_prompt_and_caption(client)
     if not description or not caption:
         print("Failed to get description/caption. Exiting.")
         exit(1)
     
-    image_path = generate_image_file(description)
+    image_path = generate_image_file(client, description)
     if not image_path:
         print("Image generation failed. Exiting.")
         exit(1)

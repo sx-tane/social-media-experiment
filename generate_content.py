@@ -2,6 +2,7 @@ import os
 import requests
 import openai
 import json
+import base64
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
@@ -10,6 +11,10 @@ load_dotenv()
 # *** 1. Configure API keys and tokens ***
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL")
+# GitHub context for generating image preview URLs in Slack
+GITHUB_REPOSITORY = os.getenv("GITHUB_REPOSITORY") # E.g., 'user/repo'
+GITHUB_REF_NAME = os.getenv("GITHUB_REF_NAME") # E.g., 'main'
+
 
 # Configure the OpenAI client
 client = openai.OpenAI(api_key=OPENAI_API_KEY)
@@ -42,7 +47,6 @@ def generate_prompt_and_caption():
             temperature=0.8
         )
         content = response.choices[0].message.content
-        print(content)
         print("Successfully got response from GPT-4o.")
     except Exception as e:
         print(f"Error calling OpenAI API for text generation: {e}")
@@ -60,10 +64,11 @@ def generate_prompt_and_caption():
         print(f"Failed to parse GPT-4o output. Error: {e}\nRaw content: {content}")
         return None, None, None
 
-# *** 3. Use gpt-image-1 to generate an image based on the description ***
-def generate_image(description):
+# *** 3. Use gpt-image-1 to generate an image and save it to a file ***
+def generate_image_file(description, output_path="pending_image.png"):
     """
-    Calls gpt-image-1 to generate an image from the provided description.
+    Calls gpt-image-1, decodes the base64 response, and saves it to a file.
+    Returns the path to the saved image.
     """
     print("Generating image with gpt-image-1...")
     style_description = (
@@ -79,37 +84,51 @@ def generate_image(description):
             prompt=style_description,
             n=1,
             size="1024x1024",
-            quality="medium",
+            response_format="b64_json" # Ask for base64 data
         )
-        image_url = response.data[0].url
-        print(f"Image generated successfully: {image_url}")
-        return image_url
+        
+        b64_data = response.data[0].b64_json
+        image_bytes = base64.b64decode(b64_data)
+        
+        with open(output_path, "wb") as f:
+            f.write(image_bytes)
+            
+        print(f"Image saved successfully to {output_path}")
+        return output_path
     except Exception as e:
-        print(f"Error calling gpt-image-1 API for image generation: {e}")
+        print(f"Error calling gpt-image-1 API for image generation. Details: {repr(e)}")
         return None
 
 # *** 4. Save content to a file for the publishing workflow ***
-def save_content_for_approval(image_url, caption, hashtags):
+def save_content_for_approval(image_path, caption, hashtags):
     """
-    Saves the generated content to a JSON file.
+    Saves the generated content metadata to a JSON file.
     """
-    print("Saving content to pending_post.json...")
+    print("Saving content metadata to pending_post.json...")
     content = {
-        "image_url": image_url,
+        "image_path": image_path,
         "caption": caption,
         "hashtags": hashtags
     }
     with open("pending_post.json", "w") as f:
         json.dump(content, f, indent=4)
-    print("Content saved.")
+    print("Content metadata saved.")
 
 # *** 5. Send a Slack notification asking for approval ***
-def send_approval_request_to_slack(image_url, caption, hashtags):
+def send_approval_request_to_slack(image_path, caption, hashtags):
     """
     Sends a notification to Slack with a preview and instructions to approve.
+    Constructs a public URL to the image based on GitHub context.
     """
     print("Sending Slack notification for approval...")
-    
+
+    image_url = "https://via.placeholder.com/512.png?text=Image+Preview+Unavailable"
+    if GITHUB_REPOSITORY and GITHUB_REF_NAME and os.path.exists(image_path):
+        image_url = f"https://raw.githubusercontent.com/{GITHUB_REPOSITORY}/{GITHUB_REF_NAME}/{image_path}"
+        print(f"Constructed Slack image preview URL: {image_url}")
+    else:
+        print("Could not construct GitHub URL for image preview. Using placeholder.")
+        
     slack_payload = {
         "text": f"New Post for Approval: {caption}",
         "blocks": [
@@ -160,12 +179,17 @@ if __name__ == "__main__":
         print("Failed to get description/caption. Exiting.")
         exit(1)
     
-    image_url = generate_image(description)
-    if not image_url:
+    image_path = generate_image_file(description)
+    if not image_path:
         print("Image generation failed. Exiting.")
         exit(1)
         
-    save_content_for_approval(image_url, caption, hashtags)
-    send_approval_request_to_slack(image_url, caption, hashtags)
-    
+    save_content_for_approval(image_path, caption, hashtags)
+    # The image must be committed before the Slack URL will work.
+    # The GitHub Action handles the commit step.
+    if SLACK_WEBHOOK_URL:
+        send_approval_request_to_slack(image_path, caption, hashtags)
+    else:
+        print("SLACK_WEBHOOK_URL not set, skipping notification.")
+
     print("Content generation script finished successfully!") 

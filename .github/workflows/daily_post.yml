@@ -46,21 +46,19 @@ jobs:
         run: python generate_content.py
 
       - name: "Commit pending post file"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          # Check if the pending_post.json file exists to be added
-          if [ -f pending_post.json ]; then
-            git add pending_post.json
-            # Commit only if there are changes to be committed
-            if ! git diff --staged --quiet; then
-              git commit -m "feat: Add or update pending post"
-              git push
-            else
-              echo "No changes to commit."
-            fi
+          # Add both the JSON and the image file
+          git add pending_post.json pending_image.png
+          # Commit only if there are changes to be committed
+          if ! git diff --staged --quiet; then
+            git commit -m "feat: Add or update pending post"
+            git push
           else
-            echo "pending_post.json not found, skipping commit."
+            echo "No changes to commit."
           fi
 
   publish_post:
@@ -94,15 +92,13 @@ jobs:
           TIKTOK_REFRESH_TOKEN: ${{ secrets.TIKTOK_REFRESH_TOKEN }}
         run: python publish_content.py
 
-      - name: "Remove pending post file after publishing"
+      - name: "Remove pending post files after publishing"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          # Check if the pending_post.json file exists to be removed
-          if [ -f pending_post.json ]; then
-            git rm pending_post.json
-            git commit -m "feat: Clean up published post file"
-            git push
-          else
-            echo "pending_post.json not found, nothing to clean up."
-          fi 
+          # Remove both the JSON and the image file
+          git rm pending_post.json pending_image.png
+          git commit -m "feat: Clean up published post files"
+          git push 

@@ -1,21 +1,24 @@
 import os
 import requests
 import json
+import time
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
 load_dotenv()
 
-# *** 1. Configure API keys and tokens ***
+# --- Configuration ---
 SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL")
 TIKTOK_CLIENT_KEY = os.getenv("TIKTOK_CLIENT_KEY")
 TIKTOK_CLIENT_SECRET = os.getenv("TIKTOK_CLIENT_SECRET")
+# The script now requires a long-lived refresh token.
 TIKTOK_REFRESH_TOKEN = os.getenv("TIKTOK_REFRESH_TOKEN")
 
-# *** 2. Refresh the TikTok Access Token ***
-def refresh_tiktok_token():
+# --- Helper Functions ---
+def get_access_token():
     """
-    Uses the refresh token to get a new access token.
+    Refreshes the access token using the refresh token.
+    Returns the new access token, or None on failure.
     """
     print("Refreshing TikTok access token...")
     url = "https://open.tiktokapis.com/v2/oauth/token/"
@@ -26,134 +29,107 @@ def refresh_tiktok_token():
         'grant_type': 'refresh_token',
         'refresh_token': TIKTOK_REFRESH_TOKEN,
     }
-
+    
     try:
         response = requests.post(url, headers=headers, data=payload)
         response.raise_for_status()
         token_data = response.json()
         
-        new_access_token = token_data.get('access_token')
-        new_open_id = token_data.get('open_id')
-
-        if not new_access_token or not new_open_id:
-            print("❌ Failed to get new access token or open_id from response.")
-            return None, None
-            
-        print("✅ New access token obtained successfully.")
-        return new_access_token, new_open_id
-        
+        if "access_token" in token_data:
+            print("Successfully refreshed access token.")
+            return token_data["access_token"]
+        else:
+            print(f"Error refreshing token. Response: {token_data}")
+            return None
     except requests.exceptions.RequestException as e:
-        print("❌ An error occurred while refreshing the access token.")
-        print(f"Status Code: {e.response.status_code}")
-        print(f"Response: {e.response.text}")
-        return None, None
+        print(f"Error refreshing access token: {e}")
+        if e.response:
+            print(f"API Response: {e.response.text}")
+        return None
 
-# *** 3. Load content from the approval file ***
-def load_pending_content():
+def post_to_tiktok(access_token, image_path, caption, hashtags):
     """
-    Loads the image URL, caption, and hashtags from the pending_post.json file.
+    Posts the generated image and caption to TikTok using direct file upload.
     """
-    print("Loading content from pending_post.json...")
-    try:
-        with open("pending_post.json", "r") as f:
-            content = json.load(f)
-            image_url = content.get("image_url")
-            caption = content.get("caption")
-            hashtags = content.get("hashtags")
-            if not image_url or not caption or not hashtags:
-                print("Error: pending_post.json is missing 'image_url', 'caption', or 'hashtags'.")
-                return None, None, None
-            print("Content loaded successfully.")
-            return image_url, caption, hashtags
-    except FileNotFoundError:
-        print("Error: pending_post.json not found. Was content generated first?")
-        return None, None, None
-    except json.JSONDecodeError:
-        print("Error: Could not decode JSON from pending_post.json.")
-        return None, None, None
-
-# *** 4. Post the image and caption to TikTok ***
-def post_to_tiktok(access_token, open_id, image_url, caption, hashtags):
-    """
-    Posts the generated image and caption to TikTok using the Content Posting API.
-    """
-    print("Initiating post to TikTok...")
-    
-    full_caption = f"{caption}\n\n{hashtags}"
-
-    endpoint = "https://open.tiktokapis.com/v2/post/publish/content/init/"
+    print("Initiating post to TikTok with file upload...")
+    # 1. Initialize the post to get an upload URL
+    init_url = "https://open.tiktokapis.com/v2/post/publish/content/init/"
     headers = {
         "Authorization": f"Bearer {access_token}",
         "Content-Type": "application/json; charset=UTF-8"
     }
     payload = {
         "post_info": {
-            "title": caption[:2200],
-            "description": full_caption,
+            "title": (caption + " " + hashtags)[:2200],
+            "description": caption,
             "disable_comment": False,
             "privacy_level": "PUBLIC_TO_EVERYONE",
             "auto_add_music": True
         },
         "source_info": {
-            "source": "PULL_FROM_URL",
-            "photo_cover_index": 1,
-            "photo_images": [image_url]
+            "source": "FILE_UPLOAD" # Specify we are uploading a file
         },
         "post_mode": "DIRECT_POST",
         "media_type": "PHOTO"
     }
-    
-    try:
-        resp = requests.post(endpoint, headers=headers, json=payload)
-        resp.raise_for_status()
-        result = resp.json()
 
-        if result.get("error", {}).get("code", "ok").lower() == "ok":
-            publish_id = result.get("data", {}).get("publish_id")
-            print(f"TikTok post initiated successfully. Publish ID: {publish_id}")
-            return True, publish_id
-        else:
-            err_msg = result.get("error", {}).get("message", "Unknown TikTok API error")
+    try:
+        init_resp = requests.post(init_url, headers=headers, json=payload)
+        init_resp.raise_for_status()
+        init_result = init_resp.json()
+
+        if init_result.get("error", {}).get("code", "ok").lower() != "ok":
+            err_msg = init_result.get("error", {}).get("message", "Unknown TikTok API error during init")
             print(f"TikTok API returned an error: {err_msg}")
             return False, None
-            
+        
+        upload_url = init_result.get("data", {}).get("upload_url")
+        publish_id = init_result.get("data", {}).get("publish_id")
+        print(f"Successfully initiated post. Publish ID: {publish_id}")
+        
+        # 2. Upload the image file to the provided URL
+        print(f"Uploading image file to: {upload_url}")
+        with open(image_path, 'rb') as f:
+            image_data = f.read()
+        
+        upload_headers = {'Content-Type': 'image/png'}
+        upload_resp = requests.put(upload_url, headers=upload_headers, data=image_data)
+        upload_resp.raise_for_status()
+        
+        print("Image file uploaded successfully.")
+        # NOTE: With direct post, the upload is sufficient. No need to check status.
+        return True, publish_id
+
     except requests.exceptions.RequestException as e:
         print(f"Error posting to TikTok: {e}")
         if e.response:
             print(f"TikTok API response: {e.response.text}")
         return False, None
 
-# *** 5. Send a final Slack notification ***
-def send_final_slack_message(image_url, caption, hashtags, tiktok_status, publish_id):
+def send_slack_message(status, publish_id, caption, image_url):
     """
-    Sends a final notification to Slack confirming the post status.
+    Sends a final status notification to a Slack channel.
     """
     print("Sending final Slack notification...")
-    status_text = "Successfully posted to TikTok ✔️" if tiktok_status else "Failed to post to TikTok ❌"
-    if tiktok_status and publish_id:
+    status_text = "Successfully posted to TikTok ✔️" if status else "Failed to post to TikTok ❌"
+    if status and publish_id:
         status_text += f" (Publish ID: {publish_id})"
         
     slack_payload = {
-        "text": f"Post Published: {caption}",
+        "text": f"**Publishing Result**\n\n**Status:** {status_text}",
         "blocks": [
             {
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": f"🚀 *Post Published!* 🚀\n\n*Caption:*\n{caption}\n\n*Hashtags:*\n`{hashtags}`"
+                    "text": f"**Publishing Result** ✨\n\n*Caption:*\n{caption}\n\n*Status:* {status_text}"
                 }
             },
             {
                 "type": "image",
+                "title": { "type": "plain_text", "text": "Published Image" },
                 "image_url": image_url,
                 "alt_text": "Published dream illustration"
-            },
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": f"*Final Status:* {status_text}"
-                }
             }
         ]
     }
@@ -168,24 +144,40 @@ def send_final_slack_message(image_url, caption, hashtags, tiktok_status, publis
 # *** Main execution flow ***
 if __name__ == "__main__":
     print("Starting publishing script...")
-    
-    # First, get a fresh access token
-    new_access_token, new_open_id = refresh_tiktok_token()
-    if not new_access_token:
-        print("Could not refresh TikTok token. Exiting.")
+
+    # 1. Load content from the pending file
+    try:
+        with open("pending_post.json", "r") as f:
+            content = json.load(f)
+        image_path = content["image_path"]
+        caption = content["caption"]
+        hashtags = content["hashtags"]
+    except (FileNotFoundError, KeyError) as e:
+        print(f"Error: Could not read 'pending_post.json' or file is invalid. {e}")
+        # Notify Slack about the failure if possible
+        send_slack_message(False, None, "Could not find pending post file.", "https://via.placeholder.com/512.png?text=Error")
         exit(1)
 
-    image_url, caption, hashtags = load_pending_content()
-    
-    if not image_url or not caption:
-        print("Could not load content to publish. Exiting.")
+    # 2. Get a fresh access token
+    access_token = get_access_token()
+    if not access_token:
+        print("Failed to get access token, cannot publish. Exiting.")
+        send_slack_message(False, None, caption, "https://via.placeholder.com/512.png?text=Auth+Error")
         exit(1)
-        
-    success, publish_id = post_to_tiktok(new_access_token, new_open_id, image_url, caption, hashtags)
+
+    # 3. Post to TikTok
+    success, publish_id = post_to_tiktok(access_token, image_path, caption, hashtags)
+
+    # 4. Notify via Slack
+    # Construct the GitHub URL for the final notification
+    github_repo = os.getenv("GITHUB_REPOSITORY")
+    github_ref = os.getenv("GITHUB_REF_NAME")
+    final_image_url = f"https://raw.githubusercontent.com/{github_repo}/{github_ref}/{image_path}" if github_repo and github_ref else "https://via.placeholder.com/512.png?text=Image"
     
-    send_final_slack_message(image_url, caption, hashtags, success, publish_id)
-    
+    send_slack_message(success, publish_id, caption, final_image_url)
+
     if success:
-        print("Publishing script finished successfully!")
+        print("Script finished successfully!")
     else:
-        print("Publishing script finished with errors.") 
+        print("Script finished with errors.")
+        exit(1) 

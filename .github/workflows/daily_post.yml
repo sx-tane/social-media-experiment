@@ -1,0 +1,98 @@
+name: Daily TikTok Post Workflow
+
+on:
+  schedule:
+    # Runs the content generation script every day at 15:00 UTC.
+    # You can change the time. Use a cron calculator like https://crontab.guru/
+    - cron: "0 15 * * *"
+  workflow_dispatch:
+    # This allows you to manually trigger the workflow with a choice.
+    inputs:
+      action:
+        description: 'Choose action to perform'
+        required: true
+        default: 'publish'
+        type: choice
+        options:
+        - publish
+        - regenerate
+
+jobs:
+  generate_content:
+    name: "Generate or Regenerate Content"
+    # This job runs on its schedule OR when you manually choose 'regenerate'.
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'regenerate')
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Checkout repository"
+        uses: actions/checkout@v4
+
+      - name: "Set up Python"
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: "Install dependencies"
+        run: pip install -r requirements.txt
+
+      - name: "Run content generation script"
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: python generate_content.py
+
+      - name: "Commit pending post file"
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          # Check if the pending_post.json file exists to be added
+          if [ -f pending_post.json ]; then
+            git add pending_post.json
+            # Commit only if there are changes to be committed
+            if ! git diff --staged --quiet; then
+              git commit -m "feat: Add or update pending post"
+              git push
+            else
+              echo "No changes to commit."
+            fi
+          else
+            echo "pending_post.json not found, skipping commit."
+          fi
+
+  publish_post:
+    name: "Publish to TikTok"
+    # This job only runs when you manually choose 'publish'.
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'publish'
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Checkout repository"
+        uses: actions/checkout@v4
+
+      - name: "Set up Python"
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: "Install dependencies"
+        run: pip install -r requirements.txt
+
+      - name: "Run publish script"
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          TIKTOK_CLIENT_KEY: ${{ secrets.TIKTOK_CLIENT_KEY }}
+          TIKTOK_CLIENT_SECRET: ${{ secrets.TIKTOK_CLIENT_SECRET }}
+          TIKTOK_REFRESH_TOKEN: ${{ secrets.TIKTOK_REFRESH_TOKEN }}
+        run: python publish_content.py
+
+      - name: "Remove pending post file after publishing"
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          # Check if the pending_post.json file exists to be removed
+          if [ -f pending_post.json ]; then
+            git rm pending_post.json
+            git commit -m "feat: Clean up published post file"
+            git push
+          else
+            echo "pending_post.json not found, nothing to clean up."
+          fi 

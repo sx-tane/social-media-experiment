@@ -16,12 +16,16 @@ on:
         options:
         - publish
         - regenerate
+        - generate_and_publish
 
 jobs:
   generate_content:
     name: "Generate or Regenerate Content"
-    # This job runs on its schedule OR when you manually choose 'regenerate'.
-    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'regenerate')
+    # This job runs on schedule, on 'regenerate', or on 'generate_and_publish'.
+    if: >
+      github.event_name == 'schedule' ||
+      (github.event_name == 'workflow_dispatch' && 
+      (github.event.inputs.action == 'regenerate' || github.event.inputs.action == 'generate_and_publish'))
     runs-on: ubuntu-latest
     steps:
       - name: "Checkout repository"
@@ -61,8 +65,14 @@ jobs:
 
   publish_post:
     name: "Publish to TikTok"
-    # This job only runs when you manually choose 'publish'.
-    if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'publish'
+    needs: generate_content
+    # This job runs on 'publish', or on 'generate_and_publish' if the generation job succeeded.
+    if: >
+      always() &&
+      (
+        (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'publish') ||
+        (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'generate_and_publish' && needs.generate_content.result == 'success')
+      )
     runs-on: ubuntu-latest
     steps:
       - name: "Checkout repository"

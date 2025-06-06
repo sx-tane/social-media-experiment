@@ -42,6 +42,7 @@ def generate_prompt_and_caption():
             temperature=0.8
         )
         content = response.choices[0].message.content
+        print(content)
         print("Successfully got response from GPT-4o.")
     except Exception as e:
         print(f"Error calling OpenAI API for text generation: {e}")
@@ -78,7 +79,7 @@ def generate_image(description):
             prompt=style_description,
             n=1,
             size="1024x1024",
-            quality="hd",
+            quality="medium",
         )
         image_url = response.data[0].url
         print(f"Image generated successfully: {image_url}")

@@ -19,7 +19,7 @@ Each step below will guide you through setting up these components, with links a
 
 First, we need the AI that will generate our daily scene descriptions, captions, and the illustration itself. The great news is that OpenAI provides all of this with a single API key.
 
-1.  **Create an OpenAI Account and API Key:** If you haven't already, sign up at **OpenAI's platform** ([https://platform.openai.com/signup](https://platform.openai.com/signup)). Once logged in, navigate to the **API Keys** section (usually under your account settings). Click "Create new secret key" and copy your API key. It will look something like `sk-XXXXXXXXXXXXXXXXXXXX`. *Keep this key secret!* We'll use it in our code to call both GPT-4o and gpt-image-1.
+1.  **Create an OpenAI Account and API Key:** If you haven't already, sign up at **OpenAI's platform** ([Platform OPENAPI](https://platform.openai.com/usage)). Once logged in, navigate to the **API Keys** section (usually under your account settings). Click "Create new secret key" and copy your API key. It will look something like `sk-XXXXXXXXXXXXXXXXXXXX`. *Keep this key secret!* We'll use it in our code to call both GPT-4o and gpt-image-1.
 
 2.  **Add a Payment Method:** To use the API for generating images with gpt-image-1 and text with GPT-4o, you'll need to add a payment method to your OpenAI account. Go to the **Billing** section in your OpenAI account settings and add a credit card. Usage is pay-as-you-go, and for our daily task, the costs will be very low (likely under \$5/month).
 
@@ -39,7 +39,7 @@ To post content automatically, you first need to get permission from your TikTok
 
 ### **2.1 Set Up Your TikTok Developer App**
 
-1.  **Create a TikTok Developer Account:** Visit the [TikTok Developers Portal](https://developers.tiktok.com/) and log in with your TikTok account.
+1.  **Create a TikTok Developer Account:** Visit the [TikTok Developers Portal](https://developers.tiktok.com/app/7512675493315725318/sandbox/7512746189046155270) and log in with your TikTok account.
 2.  **Create an App:** Go to **My Apps** and click **"Create App"**. Give it a name (e.g., "DailyDreamPosts") and select **Personal** as the app type.
 3.  **Add Content Posting API:** In your new app's dashboard, find the **"Products"** section. Click **"Add Product"** and select **Content Posting API**.
 4.  **Get Your Client Key & Secret:** In your app's "App details" page, you will find your `Client key` and `Client secret`. You will need these for the next step.

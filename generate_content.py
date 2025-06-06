@@ -4,7 +4,7 @@ import openai
 import json
 import base64
 from dotenv import load_dotenv
-from vercel_blob import blob
+import vercel_blob
 
 # Load environment variables from .env file
 load_dotenv()
@@ -63,13 +63,13 @@ def generate_prompt_and_caption(client):
         print(f"Failed to parse GPT-4o output. Error: {e}\nRaw content: {content}")
         return None, None, None
 
-# *** 3. Use dall-e-3 to generate an image and save it to a file ***
+# *** 3. Use gpt-image-1 to generate an image and save it to a file ***
 def generate_image_file(client, description, output_path="pending_image.png"):
     """
-    Calls dall-e-3, decodes the base64 response, and saves it to a file.
+    Calls gpt-image-1, decodes the base64 response, and saves it to a file.
     Returns the path to the saved image.
     """
-    print("Generating image with dall-e-3...")
+    print("Generating image with gpt-image-1...")
     style_description = (
         f"A whimsical digital illustration of: {description}. "
         "The style is minimalist, clean, flat vector art. "
@@ -79,7 +79,7 @@ def generate_image_file(client, description, output_path="pending_image.png"):
     
     try:
         response = client.images.generate(
-            model="dall-e-3",
+            model="gpt-image-1",
             prompt=style_description,
             n=1,
             size="1024x1024",
@@ -104,21 +104,34 @@ def upload_image_to_vercel(image_path):
     Uploads the specified image file to Vercel Blob storage.
     Returns the public URL of the uploaded image.
     """
-    if not VERCEL_BLOB_TOKEN:
+    # The vercel-blob library expects the token in the BLOB_READ_WRITE_TOKEN env var.
+    # We get it from the TOURII_READ_WRITE_TOKEN secret and set it temporarily.
+    vercel_token = os.getenv("TOURII_READ_WRITE_TOKEN")
+    if not vercel_token:
         print("Error: TOURII_READ_WRITE_TOKEN is not set. Cannot upload to Vercel.")
         return None
+    
+    original_blob_token = os.environ.get('BLOB_READ_WRITE_TOKEN')
+    os.environ['BLOB_READ_WRITE_TOKEN'] = vercel_token
         
     print(f"Uploading {image_path} to Vercel Blob...")
     try:
         with open(image_path, "rb") as f:
-            # The pathname is the desired filename in the blob store
-            blob_result = blob.upload(f, pathname=os.path.basename(image_path), token=VERCEL_BLOB_TOKEN)
+            # Call with positional arguments: pathname and body.
+            # The token is read from the environment by the library.
+            blob_result = vercel_blob.put(os.path.basename(image_path), f.read())
         
         print(f"Successfully uploaded to Vercel. URL: {blob_result['url']}")
         return blob_result['url']
     except Exception as e:
         print(f"Error uploading to Vercel Blob: {repr(e)}")
         return None
+    finally:
+        # Restore the original environment state to avoid side-effects
+        if original_blob_token:
+            os.environ['BLOB_READ_WRITE_TOKEN'] = original_blob_token
+        elif 'BLOB_READ_WRITE_TOKEN' in os.environ:
+            del os.environ['BLOB_READ_WRITE_TOKEN']
 
 # *** 5. Save content to a file for the publishing workflow ***
 def save_content_for_approval(image_url, caption, hashtags):

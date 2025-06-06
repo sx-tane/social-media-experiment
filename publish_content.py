@@ -58,13 +58,24 @@ def post_to_tiktok(access_token, image_path, caption, hashtags):
         "Authorization": f"Bearer {access_token}",
         "Content-Type": "application/json; charset=UTF-8"
     }
+    
+    # Get the size of the image to include in the payload
+    try:
+        image_size = os.path.getsize(image_path)
+    except OSError as e:
+        print(f"Could not get size of image file: {e}")
+        return False, None
+
     payload = {
         "post_info": {
             "title": (caption + " " + hashtags)[:2200],
-            "privacy_level": "PUBLIC_TO_EVERYONE"
+            "privacy_level": "PUBLIC_TO_EVERYONE",
+            "disable_comment": False,
+            "auto_add_music": True
         },
         "source_info": {
-            "source": "FILE_UPLOAD"
+            "source": "FILE_UPLOAD",
+            "photo_size": image_size
         },
         "post_mode": "DIRECT_POST",
         "media_type": "PHOTO"

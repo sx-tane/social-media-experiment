@@ -84,7 +84,7 @@ def generate_image_file(description, output_path="pending_image.png"):
             prompt=style_description,
             n=1,
             size="1024x1024",
-            response_format="b64_json" # Ask for base64 data
+            quality="medium",
         )
         
         b64_data = response.data[0].b64_json

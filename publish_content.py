@@ -69,13 +69,13 @@ def post_to_tiktok(access_token, image_path, caption, hashtags):
     payload = {
         "post_info": {
             "title": (caption + " " + hashtags)[:2200],
-            "privacy_level": "PUBLIC_TO_EVERYONE",
-            "disable_comment": False,
-            "auto_add_music": True
+            "privacy_level": "PUBLIC_TO_EVERYONE"
         },
         "source_info": {
             "source": "FILE_UPLOAD",
-            "photo_size": image_size
+            "photo_size": image_size,
+            "chunk_size": image_size,
+            "total_chunk_count": 1
         },
         "post_mode": "DIRECT_POST",
         "media_type": "PHOTO"

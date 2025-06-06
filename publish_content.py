@@ -74,20 +74,13 @@ def query_creator_info(access_token):
             print(f"API Response: {e.response.text}")
         return None
 
-def post_to_tiktok(access_token, image_path, caption, hashtags, privacy_level):
+def post_to_tiktok(access_token, image_url, caption, hashtags, privacy_level):
     """
     Posts the generated image to TikTok using the PULL_FROM_URL method.
+    The image is now referenced by a public URL from Vercel Blob.
     """
     print("Initiating post to TikTok using PULL_FROM_URL...")
-
-    # Construct the public URL to the image in the GitHub repository
-    github_repo = os.getenv("GITHUB_REPOSITORY")
-    github_ref = os.getenv("GITHUB_REF_NAME")
-    if not github_repo or not github_ref:
-        print("Error: GITHUB_REPOSITORY or GITHUB_REF_NAME env vars not set.")
-        return False, None
-    image_url = f"https://raw.githubusercontent.com/{github_repo}/{github_ref}/{image_path}"
-    print(f"Using public image URL: {image_url}")
+    print(f"Using public image URL from Vercel: {image_url}")
 
     endpoint = "https://open.tiktokapis.com/v2/post/publish/content/init/"
     headers = {
@@ -112,7 +105,7 @@ def post_to_tiktok(access_token, image_path, caption, hashtags, privacy_level):
             "photo_cover_index": 0,
             "photo_images": [image_url]
         },
-        "post_mode": "DIRECT_POST",
+        "post_mode": "MEDIA_UPLOAD",
         "media_type": "PHOTO"
     }
 
@@ -172,7 +165,8 @@ if __name__ == "__main__":
     try:
         with open("pending_post.json", "r") as f:
             content = json.load(f)
-        image_path = content["image_path"]
+        # The key is now 'image_url' and contains a full public URL
+        image_url = content["image_url"]
         caption = content["caption"]
         hashtags = content["hashtags"]
     except (FileNotFoundError, KeyError) as e:
@@ -198,23 +192,19 @@ if __name__ == "__main__":
     allowed_privacy_levels = creator_info.get("privacy_level_options", [])
     print(f"Available privacy options: {allowed_privacy_levels}")
     
-    privacy_level_to_use = "SELF_ONLY"
+    privacy_level_to_use = "PUBLIC_TO_EVERYONE"
     if privacy_level_to_use not in allowed_privacy_levels:
         print(f"Error: '{privacy_level_to_use}' is not in the allowed list from TikTok: {allowed_privacy_levels}")
         send_slack_message(False, None, "Publishing failed: Privacy level mismatch.", "https://via.placeholder.com/512.png?text=Privacy+Error")
         exit(1)
 
     # 4. Post to TikTok
-    success, publish_id = post_to_tiktok(access_token, image_path, caption, hashtags, privacy_level_to_use)
+    success, publish_id = post_to_tiktok(access_token, image_url, caption, hashtags, privacy_level_to_use)
 
     # 5. Notify via Slack
-    # Construct the GitHub URL for the final notification
-    github_repo = os.getenv("GITHUB_REPOSITORY")
-    github_ref = os.getenv("GITHUB_REF_NAME")
-    final_image_url = f"https://raw.githubusercontent.com/{github_repo}/{github_ref}/{image_path}" if github_repo and github_ref else "https://via.placeholder.com/512.png?text=Image"
-    
+    # We now use the image_url directly from the pending file for the notification
     if SLACK_WEBHOOK_URL:
-        send_slack_message(success, publish_id, caption, final_image_url)
+        send_slack_message(success, publish_id, caption, image_url)
     else:
         print("SLACK_WEBHOOK_URL not set, skipping final notification.")
 

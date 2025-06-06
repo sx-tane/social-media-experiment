@@ -4,6 +4,7 @@ import openai
 import json
 import base64
 from dotenv import load_dotenv
+from vercel_blob import blob
 
 # Load environment variables from .env file
 load_dotenv()
@@ -11,6 +12,8 @@ load_dotenv()
 # *** 1. Configure API keys and tokens ***
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL")
+# The Vercel Blob token is now required for the generation script
+VERCEL_BLOB_TOKEN = os.getenv("TOURII_READ_WRITE_TOKEN")
 # GitHub context for generating image preview URLs in Slack
 GITHUB_REPOSITORY = os.getenv("GITHUB_REPOSITORY") # E.g., 'user/repo'
 GITHUB_REF_NAME = os.getenv("GITHUB_REF_NAME") # E.g., 'main'
@@ -60,13 +63,13 @@ def generate_prompt_and_caption(client):
         print(f"Failed to parse GPT-4o output. Error: {e}\nRaw content: {content}")
         return None, None, None
 
-# *** 3. Use gpt-image-1 to generate an image and save it to a file ***
+# *** 3. Use dall-e-3 to generate an image and save it to a file ***
 def generate_image_file(client, description, output_path="pending_image.png"):
     """
-    Calls gpt-image-1, decodes the base64 response, and saves it to a file.
+    Calls dall-e-3, decodes the base64 response, and saves it to a file.
     Returns the path to the saved image.
     """
-    print("Generating image with gpt-image-1...")
+    print("Generating image with dall-e-3...")
     style_description = (
         f"A whimsical digital illustration of: {description}. "
         "The style is minimalist, clean, flat vector art. "
@@ -76,7 +79,7 @@ def generate_image_file(client, description, output_path="pending_image.png"):
     
     try:
         response = client.images.generate(
-            model="gpt-image-1",
+            model="dall-e-3",
             prompt=style_description,
             n=1,
             size="1024x1024",
@@ -92,17 +95,40 @@ def generate_image_file(client, description, output_path="pending_image.png"):
         print(f"Image saved successfully to {output_path}")
         return output_path
     except Exception as e:
-        print(f"Error calling gpt-image-1 API for image generation. Details: {repr(e)}")
+        print(f"Error calling DALL-E 3 API for image generation. Details: {repr(e)}")
         return None
 
-# *** 4. Save content to a file for the publishing workflow ***
-def save_content_for_approval(image_path, caption, hashtags):
+# *** 4. Upload image to Vercel Blob ***
+def upload_image_to_vercel(image_path):
+    """
+    Uploads the specified image file to Vercel Blob storage.
+    Returns the public URL of the uploaded image.
+    """
+    if not VERCEL_BLOB_TOKEN:
+        print("Error: TOURII_READ_WRITE_TOKEN is not set. Cannot upload to Vercel.")
+        return None
+        
+    print(f"Uploading {image_path} to Vercel Blob...")
+    try:
+        with open(image_path, "rb") as f:
+            # The pathname is the desired filename in the blob store
+            blob_result = blob.upload(f, pathname=os.path.basename(image_path), token=VERCEL_BLOB_TOKEN)
+        
+        print(f"Successfully uploaded to Vercel. URL: {blob_result['url']}")
+        return blob_result['url']
+    except Exception as e:
+        print(f"Error uploading to Vercel Blob: {repr(e)}")
+        return None
+
+# *** 5. Save content to a file for the publishing workflow ***
+def save_content_for_approval(image_url, caption, hashtags):
     """
     Saves the generated content metadata to a JSON file.
+    The key is now 'image_url' instead of 'image_path'.
     """
     print("Saving content metadata to pending_post.json...")
     content = {
-        "image_path": image_path,
+        "image_url": image_url,
         "caption": caption,
         "hashtags": hashtags
     }
@@ -110,20 +136,15 @@ def save_content_for_approval(image_path, caption, hashtags):
         json.dump(content, f, indent=4)
     print("Content metadata saved.")
 
-# *** 5. Send a Slack notification asking for approval ***
-def send_approval_request_to_slack(image_path, caption, hashtags):
+# *** 6. Send a Slack notification asking for approval ***
+def send_approval_request_to_slack(image_url, caption, hashtags):
     """
-    Sends a notification to Slack with a preview and instructions to approve.
-    Constructs a public URL to the image based on GitHub context.
+    Sends a notification to Slack with a direct link to the Vercel image.
     """
     print("Sending Slack notification for approval...")
 
-    image_url = "https://via.placeholder.com/512.png?text=Image+Preview+Unavailable"
-    if GITHUB_REPOSITORY and GITHUB_REF_NAME and os.path.exists(image_path):
-        image_url = f"https://raw.githubusercontent.com/{GITHUB_REPOSITORY}/{GITHUB_REF_NAME}/{image_path}"
-        print(f"Constructed Slack image preview URL: {image_url}")
-    else:
-        print("Could not construct GitHub URL for image preview. Using placeholder.")
+    if not image_url:
+        image_url = "https://via.placeholder.com/512.png?text=Image+Upload+Failed"
         
     message_text = (
         f"✨ *New Post Ready for Approval* ✨\n\n"
@@ -155,11 +176,12 @@ def main():
         try:
             with open("pending_post.json", "r") as f:
                 content = json.load(f)
-            image_path = content["image_path"]
+            # The key is now 'image_url'
+            image_url = content["image_url"]
             caption = content["caption"]
             hashtags = content["hashtags"]
             if SLACK_WEBHOOK_URL:
-                send_approval_request_to_slack(image_path, caption, hashtags)
+                send_approval_request_to_slack(image_url, caption, hashtags)
             else:
                 print("SLACK_WEBHOOK_URL not set, skipping notification.")
         except Exception as e:
@@ -182,14 +204,27 @@ def main():
         print("Image generation failed. Exiting.")
         exit(1)
         
-    save_content_for_approval(image_path, caption, hashtags)
+    # New step: Upload the generated image to Vercel Blob
+    image_url = upload_image_to_vercel(image_path)
+    if not image_url:
+        print("Vercel Blob upload failed. Exiting.")
+        exit(1)
+        
+    # The image file is no longer needed after upload, so we can remove it
+    try:
+        os.remove(image_path)
+        print(f"Removed local image file: {image_path}")
+    except OSError as e:
+        print(f"Error removing local image file: {e}")
+
+    save_content_for_approval(image_url, caption, hashtags)
     
     # Conditionally skip Slack notification if --no-slack is passed
     if '--no-slack' in sys.argv:
         print("Skipping Slack notification as requested.")
     elif SLACK_WEBHOOK_URL:
         # This path is for local runs where you want immediate notification
-        send_approval_request_to_slack(image_path, caption, hashtags)
+        send_approval_request_to_slack(image_url, caption, hashtags)
     
     print("Content generation script finished successfully!")
 

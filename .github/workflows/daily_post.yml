@@ -44,15 +44,17 @@ jobs:
       - name: "Run content generation script (files only)"
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          TOURII_READ_WRITE_TOKEN: ${{ secrets.TOURII_READ_WRITE_TOKEN }}
         run: python generate_content.py --no-slack
 
       - name: "Commit pending post files"
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          git add pending_post.json pending_image.png
+          # We only commit the JSON file now. The image is on Vercel Blob.
+          git add pending_post.json
           if ! git diff --staged --quiet; then
-            git commit -m "feat: Add or update pending post"
+            git commit -m "feat: Add or update pending post with Vercel URL"
             git push
           else
             echo "No changes to commit."
@@ -97,14 +99,13 @@ jobs:
           TIKTOK_CLIENT_KEY: ${{ secrets.TIKTOK_CLIENT_KEY }}
           TIKTOK_CLIENT_SECRET: ${{ secrets.TIKTOK_CLIENT_SECRET }}
           TIKTOK_REFRESH_TOKEN: ${{ secrets.TIKTOK_REFRESH_TOKEN }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-          GITHUB_REF_NAME: ${{ github.ref_name }}
         run: python publish_content.py
 
       - name: "Remove pending post files after publishing"
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          git rm pending_post.json pending_image.png
+          # The image is no longer in the repo, so we only remove the JSON file.
+          git rm pending_post.json
           git commit -m "feat: Clean up published post files"
           git push 

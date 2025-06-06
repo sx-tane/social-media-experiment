@@ -198,7 +198,7 @@ if __name__ == "__main__":
     allowed_privacy_levels = creator_info.get("privacy_level_options", [])
     print(f"Available privacy options: {allowed_privacy_levels}")
     
-    privacy_level_to_use = "PUBLIC_TO_EVERYONE"
+    privacy_level_to_use = "SELF_ONLY"
     if privacy_level_to_use not in allowed_privacy_levels:
         print(f"Error: '{privacy_level_to_use}' is not in the allowed list from TikTok: {allowed_privacy_levels}")
         send_slack_message(False, None, "Publishing failed: Privacy level mismatch.", "https://via.placeholder.com/512.png?text=Privacy+Error")

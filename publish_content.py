@@ -47,7 +47,34 @@ def get_access_token():
             print(f"API Response: {e.response.text}")
         return None
 
-def post_to_tiktok(access_token, image_path, caption, hashtags):
+def query_creator_info(access_token):
+    """
+    Queries the Creator Info endpoint to get available privacy options.
+    """
+    print("Querying creator info as required by TikTok API...")
+    url = "https://open.tiktokapis.com/v2/post/publish/creator_info/query/"
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json; charset=UTF-8"
+    }
+    try:
+        response = requests.post(url, headers=headers)
+        response.raise_for_status()
+        data = response.json()
+        if data.get("error", {}).get("code", "ok").lower() == "ok":
+            creator_info = data.get("data", {})
+            print(f"Successfully queried creator info: {creator_info}")
+            return creator_info
+        else:
+            print(f"Error querying creator info: {data.get('error')}")
+            return None
+    except requests.exceptions.RequestException as e:
+        print(f"Error calling creator info endpoint: {e}")
+        if e.response:
+            print(f"API Response: {e.response.text}")
+        return None
+
+def post_to_tiktok(access_token, image_path, caption, hashtags, privacy_level):
     """
     Posts the generated image to TikTok using the PULL_FROM_URL method.
     """
@@ -77,7 +104,7 @@ def post_to_tiktok(access_token, image_path, caption, hashtags):
             "title": title,
             "description": full_description,
             "disable_comment": False,
-            "privacy_level": "PUBLIC_TO_EVERYONE",
+            "privacy_level": privacy_level,
             "auto_add_music": True
         },
         "source_info": {
@@ -160,11 +187,27 @@ if __name__ == "__main__":
         print("Failed to get access token, cannot publish. Exiting.")
         send_slack_message(False, None, caption, "https://via.placeholder.com/512.png?text=Auth+Error")
         exit(1)
+        
+    # 3. Query creator info to verify permissions
+    creator_info = query_creator_info(access_token)
+    if not creator_info:
+        send_slack_message(False, None, caption, "https://via.placeholder.com/512.png?text=Creator+Info+Error")
+        exit(1)
 
-    # 3. Post to TikTok
-    success, publish_id = post_to_tiktok(access_token, image_path, caption, hashtags)
+    # For an unaudited app, we must use one of the allowed levels, SELF_ONLY is the safest.
+    allowed_privacy_levels = creator_info.get("privacy_level_options", [])
+    print(f"Available privacy options: {allowed_privacy_levels}")
+    
+    privacy_level_to_use = "PUBLIC_TO_EVERYONE"
+    if privacy_level_to_use not in allowed_privacy_levels:
+        print(f"Error: '{privacy_level_to_use}' is not in the allowed list from TikTok: {allowed_privacy_levels}")
+        send_slack_message(False, None, "Publishing failed: Privacy level mismatch.", "https://via.placeholder.com/512.png?text=Privacy+Error")
+        exit(1)
 
-    # 4. Notify via Slack
+    # 4. Post to TikTok
+    success, publish_id = post_to_tiktok(access_token, image_path, caption, hashtags, privacy_level_to_use)
+
+    # 5. Notify via Slack
     # Construct the GitHub URL for the final notification
     github_repo = os.getenv("GITHUB_REPOSITORY")
     github_ref = os.getenv("GITHUB_REF_NAME")

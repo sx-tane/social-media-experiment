@@ -33,33 +33,37 @@ First, we need the AI that will generate our daily scene descriptions, captions,
 
 **Keep your OpenAI API key handy** – it's the only key you'll need for the AI part of this project.
 
-## **Step 2: Register a TikTok Developer App (for Auto-Posting)**
+## **Step 2: Get Your TikTok API Credentials**
 
-TikTok does not allow posting content via simple means, so we need to use TikTok's official API. This requires a developer app and some configuration, but we'll walk through it:
+To post content automatically, you first need to get permission from your TikTok account. Because TikTok uses a secure authorization process (OAuth 2.0 with PKCE), the easiest way to do this is to use a special script we've provided.
 
-1.  **Create a TikTok Developer Account:** Visit the [TikTok Developers Portal](https://developers.tiktok.com/) and log in with your TikTok account. Once in the dashboard, go to **My Apps** and click **"Create App"**. Give your app a name (e.g., "DailyDreamPosts") and select **Personal** if asked about the app type.
+### **2.1 Set Up Your TikTok Developer App**
 
-2.  **Add Content Posting API to Your App:** In your new app's dashboard, find the **"Products"** or **"Features"** section. Click **"Add Product"** and select **Content Posting API** (this is the feature that lets the app post videos/photos). This will add the Content Posting API to your app's capabilities.
+1.  **Create a TikTok Developer Account:** Visit the [TikTok Developers Portal](https://developers.tiktok.com/) and log in with your TikTok account.
+2.  **Create an App:** Go to **My Apps** and click **"Create App"**. Give it a name (e.g., "DailyDreamPosts") and select **Personal** as the app type.
+3.  **Add Content Posting API:** In your new app's dashboard, find the **"Products"** section. Click **"Add Product"** and select **Content Posting API**.
+4.  **Get Your Client Key & Secret:** In your app's "App details" page, you will find your `Client key` and `Client secret`. You will need these for the next step.
+5.  **Set Your Redirect URI:** In your app's settings, you must add a valid **Redirect URI**. For our script to work, add `https://www.tourii.xyz/auth/callback` to this list and save your changes.
 
-    &#x20;*Screenshot: Adding the "Content Posting API" product to your TikTok app.*
-    *In your app's settings on TikTok Developers, scroll to "Add Products". Select **Content Posting API** and add it. This enables your app to post content via the API.*
+### **2.2 Run the Token Generator Script**
 
-3.  **Enable "Direct Post" Mode:** After adding the product, you'll see Content Posting API settings. Enable **Direct Post** (there's a toggle for "Direct Post configuration"). This allows content to be posted directly (instead of just as drafts).
+Now you can use the provided script to get your `Access Token`, `Open ID`, and, most importantly, your `Refresh Token`.
 
-    &#x20;*Screenshot: Enabling Direct Post in Content Posting API settings.*
-    *Turn on "Direct Post" so that the posts your app creates are published immediately to your TikTok profile (rather than saved as drafts).*
+1.  **Add Credentials to your `.env` file:** Before running the script, you must have a `.env` file in your project directory. Open it and make sure it contains your `TIKTOK_CLIENT_KEY` and `TIKTOK_CLIENT_SECRET` from the developer portal. It should look something like this:
+    ```
+    TIKTOK_CLIENT_KEY="your_client_key_here"
+    TIKTOK_CLIENT_SECRET="your_client_secret_here"
+    ```
+2.  **Run the Script:** Open your terminal and run the command: `python get_tiktok_token.py`.
+3.  **Authorize in Browser:** Your web browser will open. Log in to TikTok and click "Authorize". After authorizing, you will be redirected to a page at `tourii.xyz`.
+4.  **Copy the Redirect URL:** Copy the **full URL** from your browser's address bar. It will be long and contain an authorization `code`.
+5.  **Paste the URL into the Terminal:** The script will be waiting for your input. Paste the full URL you just copied into the terminal and press Enter.
+6.  **Get Your Tokens:** The script will then exchange the code for your tokens and print them out.
+7.  **Save Your Credentials:** The script worked! Now, copy the `TIKTOK_REFRESH_TOKEN` value it printed out and add it to your `.env` file. You will need this for the automated workflow.
 
-4.  **Request Required Permissions (Scopes):** TikTok's API uses OAuth scopes. For posting content, your app needs the **`video.publish`** scope. In the app settings, find **Permissions or Scopes** and **request `video.publish` scope approval**. You may need to provide a brief explanation (e.g., "Posting AI-generated daily content to my TikTok account"). TikTok might auto-approve personal apps for this scope, or it may require a short waiting period for approval.
+> **Troubleshooting:** If the script gives an error, the most common reason is an incorrect Redirect URI. Please double-check that `https://www.tourii.xyz/auth/callback` is saved in your app's settings in the TikTok Developer Portal.
 
-5.  **Authorize Your TikTok Account with the App:** Once the scope is approved, you must **authorize your own TikTok account to allow this app to post on your behalf**. The developer portal usually provides a way to generate an **OAuth link**. For example, you'll have a URL like `https://www.tiktok.com/auth/authorize?client_key=YOUR_CLIENT_KEY&scope=video.publish&redirect_uri=...` – when you visit that and log in, you'll authorize the app. TikTok will then redirect to the redirect URI you provided (you can use a dummy like `https://localhost` for testing), with a code in the URL.
-
-6.  **Obtain Access Token and Open ID:** After authorization, you need to exchange the code for an **access token** (and refresh token) and get your user's **Open ID** (TikTok's internal user ID). TikTok's docs have an endpoint for this token exchange (it's a POST to TikTok API with your app's client key & secret and the code). For a beginner-friendly route, TikTok provides a testing tool in the portal: under your app's **User Token** section, you might find a **"Generate Token"** or **"Test OAuth"** feature. Use it to get your **Access Token** and **OpenID** for your account. Copy these values. The access token will be a long string starting with `act.` and the OpenID is a string identifying your TikTok user (needed for some API calls).
-
-    *   *Tip:* The access token might eventually expire (depending on TikTok's policy, some last for a long time with a refresh token). For now, get the token; we will use it in our script. (You can always re-authorize to get a new token if needed.)
-
-7.  **Important:** TikTok's API has a **sandbox effect** for unapproved apps – any content posted via API by an *"unaudited"* app is initially **visible only to you (private)**. This means your daily posts might be marked private until TikTok reviews your app usage. Don't panic – once you test that everything works, you can submit your app for a **full audit** (in the portal) to lift this restriction. For personal use or testing, this is fine; if you want the posts public to all followers immediately, you'll eventually need to undergo the TikTok app audit process.
-
-At this point, you have a TikTok app with Content Posting enabled, the necessary scope approved, and an access token for your account. We'll use that token to authenticate the posting API calls in our script.
+At this point, you have all the necessary keys and tokens from TikTok to proceed.
 
 ## **Step 3: Set Up Slack Incoming Webhook (for Notifications)**
 
@@ -91,8 +95,9 @@ Before editing the code, make sure you have the following from previous steps:
 
 *   `OPENAI_API_KEY` – your OpenAI secret key.
 *   `SLACK_WEBHOOK_URL` – the full Slack webhook URL you obtained.
-*   `TIKTOK_ACCESS_TOKEN` – the TikTok API user access token.
-*   `TIKTOK_OPEN_ID` – your TikTok OpenID (user ID string from the token auth step).
+*   `TIKTOK_CLIENT_KEY` – the Client Key from your TikTok Developer App.
+*   `TIKTOK_CLIENT_SECRET` – the Client Secret from your TikTok Developer App.
+*   `TIKTOK_REFRESH_TOKEN` – the long-lived refresh token you got from running the `get_tiktok_token.py` script.
 
 We will include these as configurable variables in the script. For personal use, it's fine to embed them for now – just **don't publish your keys publicly**.
 
@@ -121,8 +126,9 @@ import json
 # Remember to replace these with your actual keys and not to share them publicly.
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "<YOUR_OPENAI_API_KEY>")
 SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL", "<YOUR_SLACK_WEBHOOK_URL>")
-TIKTOK_ACCESS_TOKEN = os.getenv("TIKTOK_ACCESS_TOKEN", "<YOUR_TIKTOK_ACCESS_TOKEN>")
-TIKTOK_OPEN_ID = os.getenv("TIKTOK_OPEN_ID", "<YOUR_TIKTOK_OPEN_ID>")
+TIKTOK_CLIENT_KEY = os.getenv("TIKTOK_CLIENT_KEY", "<YOUR_TIKTOK_CLIENT_KEY>")
+TIKTOK_CLIENT_SECRET = os.getenv("TIKTOK_CLIENT_SECRET", "<YOUR_TIKTOK_CLIENT_SECRET>")
+TIKTOK_REFRESH_TOKEN = os.getenv("TIKTOK_REFRESH_TOKEN", "<YOUR_TIKTOK_REFRESH_TOKEN>")
 
 # Configure the OpenAI client
 client = openai.OpenAI(api_key=OPENAI_API_KEY)
@@ -208,7 +214,7 @@ def post_to_tiktok(image_url, caption):
     print("Initiating post to TikTok...")
     endpoint = "https://open.tiktokapis.com/v2/post/publish/content/init/"
     headers = {
-        "Authorization": f"Bearer {TIKTOK_ACCESS_TOKEN}",
+        "Authorization": f"Bearer {TIKTOK_REFRESH_TOKEN}",
         "Content-Type": "application/json; charset=UTF-8"
     }
     payload = {
@@ -358,7 +364,7 @@ python daily_tiktok_post.py
 Watch the output. The script will print its progress.
 
 *   If the GPT or image generation call fails, check your `OPENAI_API_KEY` and make sure you have a valid payment method on your OpenAI account.
-*   If the TikTok post fails, the error message from the API will be printed. This is often due to an incorrect or expired `TIKTOK_ACCESS_TOKEN`. You might need to go back to the TikTok Developer Portal and generate a new one.
+*   If the TikTok post fails, the error message from the API will be printed. This is often due to an incorrect or expired `TIKTOK_REFRESH_TOKEN`. You might need to go back to the TikTok Developer Portal and generate a new one.
 *   If all goes well, the script will print success messages, and you should see a new post on your TikTok account (it might be private!) and a notification in your Slack channel. 🎉
 
 Once you've confirmed it works, you're ready to schedule it to run automatically every day!
@@ -387,9 +393,14 @@ This gives you full control to keep regenerating content until you get a result 
     *   Add `requirements.txt`.
     *   **Important:** Create a `.gitignore` file and add `.env` to it to ensure you never accidentally commit your local secrets file.
 
-3.  **Add Secrets to GitHub:** In your repository, go to **Settings > Secrets and variables > Actions**. Create secrets for `OPENAI_API_KEY`, `SLACK_WEBHOOK_URL`, `TIKTOK_ACCESS_TOKEN`, and `TIKTOK_OPEN_ID`.
+3.  **Add Secrets to GitHub:** In your repository, go to **Settings > Secrets and variables > Actions**. Create the following secrets and paste in the corresponding values.
+    *   `OPENAI_API_KEY`: Your key from OpenAI.
+    *   `SLACK_WEBHOOK_URL`: Your incoming webhook URL from Slack.
+    *   `TIKTOK_CLIENT_KEY`: The Client Key from your TikTok Developer App.
+    *   `TIKTOK_CLIENT_SECRET`: The Client Secret from your TikTok Developer App.
+    *   `TIKTOK_REFRESH_TOKEN`: The long-lived refresh token you got from running the `get_tiktok_token.py` script.
 
-4.  **Add the GitHub Actions Workflow File:** Add the `daily_post.yml` file to the `.github/workflows` directory. The file is now configured with the scheduled generation and the manual `publish`/`regenerate` triggers.
+4.  **Add the GitHub Actions Workflow File:** Add the `daily_post.yml` file to the `.github/workflows` directory. The file is now configured to automatically refresh your access token before every post.
 
 5.  **Give Workflow Permissions:** For the workflow to be able to save and delete the `pending_post.json` file, you need to give it write permissions. Go to your repository **Settings > Actions > General**. Scroll to **"Workflow permissions"** and select **"Read and write permissions"**. Click **Save**.
 

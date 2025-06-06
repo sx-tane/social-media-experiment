@@ -33,7 +33,7 @@ def generate_prompt_and_caption():
     
     try:
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": system_msg},
                 {"role": "user", "content": user_msg}

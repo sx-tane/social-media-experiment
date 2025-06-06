@@ -115,24 +115,14 @@ def send_slack_message(status, publish_id, caption, image_url):
     if status and publish_id:
         status_text += f" (Publish ID: {publish_id})"
         
-    slack_payload = {
-        "text": f"**Publishing Result**\n\n**Status:** {status_text}",
-        "blocks": [
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": f"**Publishing Result** ✨\n\n*Caption:*\n{caption}\n\n*Status:* {status_text}"
-                }
-            },
-            {
-                "type": "image",
-                "title": { "type": "plain_text", "text": "Published Image" },
-                "image_url": image_url,
-                "alt_text": "Published dream illustration"
-            }
-        ]
-    }
+    message_text = (
+        f"**Publishing Result** ✨\n\n"
+        f"*Caption:*\n{caption}\n\n"
+        f"*Status:* {status_text}\n\n"
+        f"<{image_url}|View the post source image here>"
+    )
+
+    slack_payload = { "text": message_text }
     
     try:
         resp = requests.post(SLACK_WEBHOOK_URL, json=slack_payload)
@@ -174,7 +164,10 @@ if __name__ == "__main__":
     github_ref = os.getenv("GITHUB_REF_NAME")
     final_image_url = f"https://raw.githubusercontent.com/{github_repo}/{github_ref}/{image_path}" if github_repo and github_ref else "https://via.placeholder.com/512.png?text=Image"
     
-    send_slack_message(success, publish_id, caption, final_image_url)
+    if SLACK_WEBHOOK_URL:
+        send_slack_message(success, publish_id, caption, final_image_url)
+    else:
+        print("SLACK_WEBHOOK_URL not set, skipping final notification.")
 
     if success:
         print("Script finished successfully!")

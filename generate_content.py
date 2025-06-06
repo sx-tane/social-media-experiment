@@ -129,39 +129,17 @@ def send_approval_request_to_slack(image_path, caption, hashtags):
     else:
         print("Could not construct GitHub URL for image preview. Using placeholder.")
         
-    slack_payload = {
-        "text": f"New Post for Approval: {caption}",
-        "blocks": [
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": f"✨ *New Post Ready for Approval* ✨\n\n*Caption:*\n{caption}\n\n*Hashtags:*\n`{hashtags}`"
-                }
-            },
-            {
-                "type": "image",
-                "title": {
-                    "type": "plain_text",
-                    "text": "Generated Image"
-                },
-                "image_url": image_url,
-                "alt_text": "Daily dream illustration"
-            },
-            {
-                "type": "divider"
-            },
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": "To proceed, go to your repository's **Actions** tab, click on the **'Daily TikTok Post Workflow'**, and run it manually.\n\n"
-                            "🔹 Choose **`publish`** to post this content to TikTok.\n"
-                            "🔹 Choose **`regenerate`** to discard this version and create a new one."
-                }
-            }
-        ]
-    }
+    message_text = (
+        f"✨ *New Post Ready for Approval* ✨\n\n"
+        f"*Caption:*\n{caption}\n\n"
+        f"*Hashtags:*\n`{hashtags}`\n\n"
+        f"To view the image, visit this URL:\n{image_url}\n\n"
+        f"To proceed, go to your repository's *Actions* tab, click on the *'Daily TikTok Post Workflow'*, and run it manually.\n"
+        f"🔹 Choose `publish` to post this content to TikTok.\n"
+        f"🔹 Choose `regenerate` to discard this version and create a new one."
+    )
+
+    slack_payload = { "text": message_text }
     
     try:
         resp = requests.post(SLACK_WEBHOOK_URL, json=slack_payload)
@@ -171,7 +149,29 @@ def send_approval_request_to_slack(image_path, caption, hashtags):
         print(f"Error sending Slack message: {e}")
 
 # *** Main execution flow ***
-if __name__ == "__main__":
+def main():
+    """Main function to handle command-line arguments."""
+    import sys
+
+    # Simple argument parsing
+    if '--slack-only' in sys.argv:
+        print("Running in Slack notification-only mode.")
+        try:
+            with open("pending_post.json", "r") as f:
+                content = json.load(f)
+            image_path = content["image_path"]
+            caption = content["caption"]
+            hashtags = content["hashtags"]
+            if SLACK_WEBHOOK_URL:
+                send_approval_request_to_slack(image_path, caption, hashtags)
+            else:
+                print("SLACK_WEBHOOK_URL not set, skipping notification.")
+        except Exception as e:
+            print(f"Failed to read pending files or send notification. Error: {repr(e)}")
+            exit(1)
+        return
+
+    # Default behavior: generate files
     print("Starting content generation script...")
     
     description, caption, hashtags = generate_prompt_and_caption()
@@ -185,11 +185,15 @@ if __name__ == "__main__":
         exit(1)
         
     save_content_for_approval(image_path, caption, hashtags)
-    # The image must be committed before the Slack URL will work.
-    # The GitHub Action handles the commit step.
-    if SLACK_WEBHOOK_URL:
+    
+    # Conditionally skip Slack notification if --no-slack is passed
+    if '--no-slack' in sys.argv:
+        print("Skipping Slack notification as requested.")
+    elif SLACK_WEBHOOK_URL:
+        # This path is for local runs where you want immediate notification
         send_approval_request_to_slack(image_path, caption, hashtags)
-    else:
-        print("SLACK_WEBHOOK_URL not set, skipping notification.")
+    
+    print("Content generation script finished successfully!")
 
-    print("Content generation script finished successfully!") 
+if __name__ == "__main__":
+    main() 

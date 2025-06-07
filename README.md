@@ -2,6 +2,9 @@
 
 Do you want to automatically create a calming bedtime illustration every day and share it on TikTok with a motivational caption? This tutorial will walk you through setting up a simple system – using AI for image and text, and automating posting to TikTok – all for little to no cost. We'll also set up Slack notifications so you get a daily preview and status update. No coding experience is required; we'll provide all code and detailed instructions. Just follow along step by step!
 
+## Step to auth a tiktok account:
+https://blog.csdn.net/youbl/article/details/143779929
+
 ## **Overview and Tools**
 
 **What We'll Build:** A script that every day will use **GPT-4o** to generate a creative scene description and a motivational caption. It will then feed that description to OpenAI's **gpt-image-1** image generator to create a unique, whimsical illustration in a **flat, minimalist, monotone blue style** with a "cozy bedtime" vibe. The script will then automatically post the image and caption to TikTok with a **randomly selected soundtrack** and send you a Slack notification with the result.

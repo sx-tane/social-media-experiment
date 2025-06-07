@@ -76,7 +76,7 @@ def generate_image_file(client, description, output_path="pending_image.png"):
     style_description = (
         f"A whimsical digital illustration of: {description}. "
         "Style: minimalist, clean, flat vector art. "
-        "Palette: calming, monotone, shades of deep color and soft, glowing bright colors. "
+        "Palette: calming, monotone, shades of deep color and soft, glowing bright colors."
         "Mood: cozy, serene, dreamlike, perfect for a bedtime story. Centered composition."
     )
     

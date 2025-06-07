@@ -6,6 +6,7 @@ import base64
 import boto3
 from botocore.exceptions import ClientError
 from dotenv import load_dotenv
+from datetime import datetime
 
 # Load environment variables from .env file
 load_dotenv()
@@ -67,11 +68,15 @@ def generate_prompt_and_caption(client):
         return None, None, None
 
 # *** 3. Use gpt-image-1 to generate an image and save it to a file ***
-def generate_image_file(client, description, output_path="pending_image.png"):
+def generate_image_file(client, description):
     """
     Calls gpt-image-1, decodes the base64 response, and saves it to a file.
     Returns the path to the saved image.
     """
+    # Generate a dynamic filename with the current date
+    current_date = datetime.now().strftime("%Y-%m-%d")
+    output_path = f"{current_date}-pending_image.png"
+
     print("Generating image with gpt-image-1...")
     style_description = (
         f"A whimsical digital illustration of: {description}. "
